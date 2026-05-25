@@ -1,0 +1,66 @@
+fileignoreconfig:
+  - filename: uv.lock
+    ignore_detectors:
+      - filecontent
+
+  - filename: "*.docx"
+    ignore_detectors:
+      - filecontent
+
+  - filename: ".env.example"
+    ignore_detectors:
+      - filename
+    allowed_patterns:
+      - "CLICKHOUSE_PASSWORD=ledger_dev"
+      - "MARIADB_PASSWORD=<set-real-secret>"
+
+  - filename: "config/settings.py"
+    ignore_detectors:
+      - filename
+    allowed_patterns:
+      - 'SECRET_KEY = os.getenv\("DJANGO_SECRET_KEY", "ipa-listener-dev-only"\)'
+
+  - filename: "ledger_listener/clickhouse/client.py"
+    allowed_patterns:
+      - "password=settings.clickhouse_password"
+
+  - filename: "ledger_listener/mariadb/client.py"
+    allowed_patterns:
+      - "password=self._settings.mariadb_password"
+
+  - filename: "tests/conftest.py"
+    allowed_patterns:
+      - 'clickhouse_password="secret"'
+      - 'mariadb_password="secret"'
+
+  - filename: "scripts/ci/smoke_test.py"
+    allowed_patterns:
+      - "password=settings.clickhouse_password"
+      - 'print\("Smoke test passed: row found in ClickHouse"\)'
+
+  - filename: "docker-compose.yml"
+    allowed_patterns:
+      - 'CLICKHOUSE_PASSWORD: \$\{CLICKHOUSE_PASSWORD:-ledger_dev\}'
+      - 'MARIADB_PASSWORD: \$\{MARIADB_PASSWORD\}'
+
+  - filename: "tests/test_tc04_invalid_event_error_handling.py"
+    allowed_patterns:
+      - "def monkeypatched_consumer_class"
+
+  - filename: "ledger_listener/configuration.py"
+    allowed_patterns:
+      - 'clickhouse_password=os.getenv\("CLICKHOUSE_PASSWORD", "ledger_dev"\)'
+      - 'mariadb_password=os.getenv\("MARIADB_PASSWORD"'
+
+  - filename: "scripts/correction_booking.py"
+    allowed_patterns:
+      - "password=settings.clickhouse_password"
+
+  - filename: "scripts/invoice.py"
+    allowed_patterns:
+      - "password=settings.clickhouse_password"
+
+  - filename: "tests/test_tc07_clickhouse_insert_payload.py"
+    allowed_patterns:
+      - "monkeypatch.setattr"
+      - "pytest.MonkeyPatch"

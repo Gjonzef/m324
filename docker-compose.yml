@@ -1,0 +1,107 @@
+x-listener-image: &listener_image
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: ledger-ipa-listener:local
+
+services:
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.12
+    container_name: ledger-clickhouse
+    restart: unless-stopped
+    ports:
+      - "18123:8123"
+      - "9000:9000"
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DATABASE:-billing}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USERNAME:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-ledger_dev}
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka-check:
+    <<: *listener_image
+    pull_policy: never
+    restart: "no"
+    command: ["uv", "run", "python", "scripts/ci/check_kafka.py"]
+    environment: &listener_env
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS}
+      KAFKA_CDC_TOPICS: ${KAFKA_CDC_TOPICS}
+      KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-billing-listener-dev}
+      KAFKA_AUTO_OFFSET_RESET: ${KAFKA_AUTO_OFFSET_RESET:-latest}
+      KAFKA_ALLOW_WILDCARD_TOPICS: ${KAFKA_ALLOW_WILDCARD_TOPICS:-false}
+      LISTENER_POLL_TIMEOUT_SECONDS: ${LISTENER_POLL_TIMEOUT_SECONDS:-1.0}
+
+      CLICKHOUSE_HOST: ${DOCKER_CLICKHOUSE_HOST:-clickhouse}
+      CLICKHOUSE_PORT: ${DOCKER_CLICKHOUSE_PORT:-8123}
+      CLICKHOUSE_USERNAME: ${CLICKHOUSE_USERNAME:-default}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-ledger_dev}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DATABASE:-billing}
+      CLICKHOUSE_SECURE: ${CLICKHOUSE_SECURE:-false}
+      CLICKHOUSE_RECREATE_LEDGER_TABLE: ${CLICKHOUSE_RECREATE_LEDGER_TABLE:-false}
+
+      DEBEZIUM_CONNECTOR_NAME: ${DEBEZIUM_CONNECTOR_NAME:-telephony_dev}
+      SOURCE_DATABASE_NAME: ${SOURCE_DATABASE_NAME:-telephony_dev}
+      SUBSCRIPTION_TABLE_NAME: ${SUBSCRIPTION_TABLE_NAME:-subscription}
+      MONTHLY_BILLING_TOPIC: ${MONTHLY_BILLING_TOPIC:-monthly_billing}
+
+      MARIADB_HOST: ${MARIADB_HOST}
+      MARIADB_PORT: ${MARIADB_PORT:-3306}
+      MARIADB_DATABASE: ${MARIADB_DATABASE}
+      MARIADB_USER: ${MARIADB_USER}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      MARIADB_CONNECT_TIMEOUT_SECONDS: ${MARIADB_CONNECT_TIMEOUT_SECONDS:-5}
+      MARIADB_CHARSET: ${MARIADB_CHARSET:-utf8mb4}
+      MARIADB_COLLATION: ${MARIADB_COLLATION:-utf8mb4_general_ci}
+
+      DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-CHF}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      SMOKE_TOPIC: ${SMOKE_TOPIC:-}
+      SMOKE_SUBSCRIPTION_ID: ${SMOKE_SUBSCRIPTION_ID:-}
+      SMOKE_END_USER_ID: ${SMOKE_END_USER_ID:-}
+      SMOKE_PRODUCT_ID: ${SMOKE_PRODUCT_ID:-}
+      SMOKE_WAIT_SECONDS: ${SMOKE_WAIT_SECONDS:-60}
+
+  clickhouse-init:
+    <<: *listener_image
+    pull_policy: never
+    restart: "no"
+    command: ["uv", "run", "python", "scripts/ci/ensure_clickhouse_schema.py"]
+    environment: *listener_env
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
+  listener:
+    <<: *listener_image
+    pull_policy: never
+    restart: unless-stopped
+    command: ["uv", "run", "python", "manage.py", "runlistener"]
+    environment: *listener_env
+    depends_on:
+      clickhouse-init:
+        condition: service_completed_successfully
+      kafka-check:
+        condition: service_completed_successfully
+
+  smoke-test:
+    <<: *listener_image
+    pull_policy: never
+    restart: "no"
+    command: ["uv", "run", "python", "scripts/ci/smoke_test.py"]
+    environment: *listener_env
+    depends_on:
+      listener:
+        condition: service_started
+
+volumes:
+  clickhouse_data:
+  clickhouse_logs:
