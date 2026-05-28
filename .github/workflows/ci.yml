@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --frozen --dev
+
+      - name: Run Ruff
+        run: uv run ruff check .
+
+      - name: Run unit tests
+        run: uv run pytest
+
+  talisman:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download Talisman
+        env:
+          TALISMAN_VERSION: v1.37.0
+        run: |
+          mkdir -p .bin talisman_reports
+          curl -sSL -o .bin/talisman "https://github.com/thoughtworks/talisman/releases/download/${TALISMAN_VERSION}/talisman_linux_amd64"
+          chmod +x .bin/talisman
+          .bin/talisman --version
+
+      - name: Run Talisman scan
+        run: .bin/talisman --scan --ignoreHistory --reportDirectory talisman_reports
+
+      - name: Upload Talisman report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: talisman-reports
+          path: talisman_reports/
