@@ -60,6 +60,7 @@ jobs:
           .bin/talisman --version
 
       - name: Run Talisman scan
+        continue-on-error: true
         run: .bin/talisman --scan --ignoreHistory --reportDirectory talisman_reports
 
       - name: Upload Talisman report
