@@ -1,4 +1,4 @@
-# Ledger IPA Listener
+# Ledger Listener
 
 Event-driven Billing-Listener fuer die Architektur:
 
